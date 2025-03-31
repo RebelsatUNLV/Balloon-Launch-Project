@@ -9,7 +9,7 @@ The repository is organized as follows:
 ├── CubeSat_code/      # Code for each of the circuits in cubesat
 ├── hardware/           # Hardware specifications and configurations
 ├── README.md           # This file
-└── Testing/            # Code for testing the .iio code
+└── Testing/            # Code for testing the .ino code
 ```
 
 ## Getting Started
