@@ -44,20 +44,17 @@ The balloon payload consists of:
 - Camera system for aerial photography (HIATUS)
 - Radio telemetry for real-time data transmission
 - Power management system
-- 
 
 
 ## Software Components
 - ASB.ino: Software for the Atmospheric board
-- MCB.ino: Main flight software for the Raspberry Pi
+- MCB.ino: Main flight software for the Raspberry Pi Pico 2
 - BMS.ino: Software for the power management
 - Testing: Validation scripts for pre-flight testing
 
 
 ## Contributors
 - UNLV Rebelsat Team
-
-
 
 ## Acknowledgments
 - UNLV Engineering Department
