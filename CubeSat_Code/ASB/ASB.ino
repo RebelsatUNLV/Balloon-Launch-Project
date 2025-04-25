@@ -10,9 +10,26 @@
 #include <Adafruit_BMP085.h>
 #include <sps30.h>
 #include <DFRobot_SCD4X.h>
-
+//barometer libary dependencies
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP085_U.h>
 
 #define ALTITUDE 1011.9	
+
+//barometer macros begin
+// ======== CALIBRATION SETTINGS (MODIFY THESE) ========
+// Enter your known altitude in meters
+#define KNOWN_ALTITUDE 743.0  // Replace with your actual altitude
+
+// Enter your local sea level pressure in hPa (check a weather service)
+// Standard is 1013.25 hPa, but using local value improves accuracy
+#define LOCAL_SEA_LEVEL_PRESSURE 1011.6  // Replace with local value
+
+// Pressure offset in hPa (adjust based on comparison with reference)
+#define PRESSURE_OFFSET 0.0  // Fine-tune as needed after testing
+// =====================================================
+//baromete macros end
+
 
 Adafruit_SHT31 sht31 = Adafruit_SHT31();
 SparkFun_ENS160 ens; 
@@ -20,7 +37,7 @@ Adafruit_BMP085 bmp;
 struct sps30_measurement m;
 DFRobot_SCD4X SCD4X(&Wire, SCD4X_I2C_ADDR);
 
-bmp.
+
 // ASB Variables
 #define LED     2
 bool ist[128];
@@ -32,11 +49,10 @@ struct baseSens {
 baseSens bs;
 
 struct baseData {
-  float t1, t2, p1, rh, pa1;
+  float t1, temperature, pressureKPa, rh, altitude;
   uint32_t aqi, tvoc, eco2;
   uint16_t co2;
   int ensFlags;
-  
 };
 baseData bd;
 
@@ -54,7 +70,7 @@ void setup() {
   for(int i=0; i<128; i++){
     if(ist[i]){
       Serial.print("DTC 0x");
-      if(i < 16) Serial.print("0");
+     // if(i < 16) Serial.print("0");
       Serial.println(i, HEX);
     }
   }
@@ -117,6 +133,25 @@ void setup() {
   //  Serial.print("Gas Sensor Status Flag (0 - Standard, 1 - Warm up, 2 - Initial Start Up): ");
     Serial.println(ensStatus);
   }
+  //barometer
+   while (!Serial) delay(10); // Wait for serial port to open
+  
+  Serial.println("Pressure Sensor with Compile-Time Calibration");
+  Serial.println("");
+  //bread board testing
+  // Initialize I2C
+  //Wire.setSDA(0);  // GPIO 0 for SDA
+  //Wire.setSCL(1);  // GPIO 1 for SCL
+  //Wire.begin();
+  
+  /* Initialize the sensor */
+  if(!bmp.begin())
+  {
+    /* There was a problem detecting the BMP085 ... check your connections */
+   // Serial.print("Ooops, no BMP085/180 detected ... Check your wiring or I2C ADDR!");
+    while(1);
+  }
+  //end barometer
 }
 
 uint32_t lowPollRate, highPollRate, txPacketTime = 0;
@@ -141,6 +176,7 @@ void loop() {
     txPM2Pkt();
     txPacketTime = millis();
   }
+
 }
 
 
@@ -182,8 +218,8 @@ void txMainPkt(){
   char bu[150];
   //                  | T1 | T2 | RH | P1 | PA |AQI |TVOC|ECO2|CO2
   sprintf(bu, "$ASB,0,%05d,%05d,%04d,%05d,%05d,%01d,%06d,%05d,%05d,*",
-          (int)((bd.t1+40)*100), (int)((bd.t2+40)*100), (int)(bd.rh*10),
-          (int)(bd.p1/10), (int)(bd.pa1),
+          (int)((bd.t1+40)*100), (int)((bd.temperature)), (int)(bd.rh*10),
+          (int)(bd.pressureKPa), (int)(bd.altitude),
           (int)bd.aqi, (int)bd.tvoc, (int)bd.eco2, (int)bd.co2);
   Serial.println(bu);
   delay(100);
@@ -226,9 +262,64 @@ void getSHT3x(){
 }
 
 void getBMP180(){
-  bd.t2 = bmp.readTemperature();
-  bd.p1 = bmp.readPressure();
-  bd.pa1 = bmp.readAltitude();
+
+
+    //barometer begin
+    /* Get a new sensor event */ 
+  sensors_event_t event;
+  //bmp.getEvent(&event);
+ 
+  /* Display the results with calibration applied */
+  if (event.pressure)
+  {
+    // Apply calibration offset to pressure
+    float calibratedPressure = event.pressure + PRESSURE_OFFSET;
+    
+    // Convert to kPa for display
+    float pressureKPa = calibratedPressure / 10.0;
+    
+    // Display raw and calibrated pressure
+   // Serial.print("Raw Pressure:      ");
+  //  Serial.print(event.pressure / 10.0);
+   // Serial.println(" kPa");
+    
+   // Serial.print("Calibrated Pressure: ");
+   // Serial.print(pressureKPa);
+  //  Serial.println(" kPa");
+    
+    /* Get the current temperature */
+    float temperature;
+    //bmp.getTemperature(&temperature);
+   // Serial.print("Temperature:        ");
+   // Serial.print(temperature);
+   // Serial.println(" C");
+
+    /* Calculate altitude using the calibrated pressure and local sea level reference */
+    float altitude = 44330.0 * (1.0 - pow(calibratedPressure / LOCAL_SEA_LEVEL_PRESSURE, 0.190294957184));
+    
+   // Serial.print("Altitude:           "); 
+   // Serial.print(altitude); 
+   // Serial.println(" m");
+    
+    // Calculate sea level pressure using the known altitude
+    // This is useful for verifying your calibration
+    float calculatedSeaLevel = calibratedPressure / pow(1.0 - (KNOWN_ALTITUDE / 44330.0), 5.255);
+    Serial.print("Calculated Sea Level: ");
+    Serial.print(calculatedSeaLevel/10);
+   Serial.println(" kPa");
+    
+   // Serial.println("");
+  bd.temperature = temperature;
+  bd.pressureKPa = calculatedSeaLevel;
+  bd.altitude = altitude;
+
+  }
+  else
+  {
+    Serial.println("Sensor error");
+  }
+  delay(1000);
+  //barometer end
 }
 
 void getENS160(){
