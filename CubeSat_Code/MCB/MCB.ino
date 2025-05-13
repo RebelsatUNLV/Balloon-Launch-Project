@@ -366,41 +366,77 @@ void loop()
             t = rs.substring(32, 36); // Sol 2 V
             sys.sol2V = t.toFloat();
         }
-        if (rs.startsWith("$ASB,0")) {
-        
-        t = rs.substring(7, 12); // AD T1
-        int i = t.toInt();
-        ad.t1 = ((float)i / 100) - 40;
-
-        t = rs.substring(13, 18); // AD T2
-        i = t.toInt();
-        ad.t2 = ((float)i / 100) - 40;
-
-        t = rs.substring(19, 23); // AD RH
-        i = t.toInt();
-        ad.rh = ((float)i / 10);
-
-        t = rs.substring(20, 25); // AD Press
-        i = t.toInt();
-        ad.p1 = ((float)i / 10);
-        
-        t = rs.substring(26, 31); // AD Press Alt
-        ad.pa1 = t.toInt();
-
-        t = rs.substring(32, 33); // AD AQI
-        ad.aqi = t.toInt();
-
-        t = rs.substring(34, 40); // AD tvoc PPB
-        ad.tvoc = t.toInt();
-
-        t = rs.substring(41, 46); // AD ECO2 PPM
-        ad.eco2 = t.toInt();
-
-        t = rs.substring(47, 52); // AD CO2 PPM
-        ad.co2 = t.toInt();
-  
-    }
-
+        if (rs.startsWith("$ASB,0"))
+        {
+            // Temperature 1
+            t = rs.substring(7, 12);
+            int i = t.toInt();
+            ad.t1 = ((float)i / 100) - 40;
+            // Temperature 2
+            t = rs.substring(13, 18);
+            i = t.toInt();
+            ad.t2 = ((float)i / 100) - 40;
+            // Humidity
+            t = rs.substring(20, 25); // AD RH (corrected position)
+            i = t.toInt();
+            ad.rh = ((float)i / 10);
+            // Pressure (FIXED)
+            t = rs.substring(19, 24); // Correct substring for pressure
+            i = t.toInt();
+            ad.p1 = (float)i / 10; // Proper kPa conversion
+            // Pressure Altitude (FIXED)
+            t = rs.substring(26, 31); // Now unique substring
+            ad.pa1 = t.toInt();
+            t = rs.substring(32, 33); // AD AQI
+            ad.aqi = t.toInt();
+            t = rs.substring(34, 40); // AD tvoc PPB
+            ad.tvoc = t.toInt();
+            t = rs.substring(41, 46); // AD ECO2 PPM
+            ad.eco2 = t.toInt();
+            t = rs.substring(47, 52); // AD CO2 PPM
+            ad.co2 = t.toInt();
+        }
+        if (rs.startsWith("$ASB,1"))
+        {
+            t = rs.substring(7, 12); // AD MC 1.0
+            int i = t.toInt();
+            ad.pm10 = ((float)i / 10);
+            t = rs.substring(13, 18); // AD MC 2.5
+            i = t.toInt();
+            ad.pm25 = ((float)i / 10);
+            t = rs.substring(19, 24); // AD MC 4.0
+            i = t.toInt();
+            ad.pm40 = ((float)i / 10);
+            t = rs.substring(25, 30); // AD MC 10.0
+            i = t.toInt();
+            ad.pm100 = ((float)i / 10);
+            t = rs.substring(31, 37); // AD NC 0.5
+            i = t.toInt();
+            ad.nc05 = ((float)i / 10);
+            t = rs.substring(38, 44); // AD NC 1.0
+            i = t.toInt();
+            ad.nc10 = ((float)i / 10);
+            t = rs.substring(45, 51); // AD NC 2.5
+            i = t.toInt();
+            ad.nc25 = ((float)i / 10);
+            t = rs.substring(52, 58); // AD NC 4.0
+            i = t.toInt();
+            ad.nc40 = ((float)i / 10);
+            t = rs.substring(59, 65); // AD NC 10.0
+            i = t.toInt();
+            ad.nc100 = ((float)i / 10);
+            t = rs.substring(66, 69); // AD Typ Part Size
+            i = t.toInt();
+            ad.typ = ((float)i / 100);
+        }
+        if (rs.startsWith("$CTR"))
+        {
+            // String es = rs.substring(5, 10);
+        }
+        if (rs.startsWith("$VAR"))
+        {
+            // String es = rs.substring(5, 10);
+        }
     }
 }
 
