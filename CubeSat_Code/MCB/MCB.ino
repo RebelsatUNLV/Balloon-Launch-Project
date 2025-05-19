@@ -582,10 +582,9 @@ void readMPU9250()
 {
     IMU.update();
     IMU.getAccel(&accelData);
-    // The FastIMU library returns acceleration values in G's, so multiplying by 9.81 gives m/s^2
-    sData.ax = accelData.accelX * 9.81;
-    sData.ay = accelData.accelY * 9.81;
-    sData.az = accelData.accelZ * 9.81;
+    sData.ax = accelData.accelX;
+    sData.ay = accelData.accelY;
+    sData.az = accelData.accelZ;
     sData.accelMagnitude = sqrt(sData.ax * sData.ax + sData.ay * sData.ay + sData.az * sData.az);
     IMU.getGyro(&gyroData);
     sData.gx = gyroData.gyroX;
