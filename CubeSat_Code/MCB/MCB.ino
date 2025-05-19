@@ -208,7 +208,7 @@ void loop()
         Serial.print(sData.ay);
         Serial.print(", ");
         Serial.print(sData.az);
-        Serial.print(",");
+        Serial.print(", ");
         Serial.println(sData.accelMagnitude);
         Serial.print("Gyro (deg/s): ");
         Serial.print(sData.gx);
