@@ -13,13 +13,15 @@
 #include "Adafruit_SHT31.h"
 #include <Adafruit_GPS.h>
 #include "Madgwick.h"
+
+// Global variables for system state and hardware control
 File dlog;
 File root;
 double btLETime = 0;
 bool sdInit = false;
 bool sendPKTtoBLE = true;
 uint8_t csID = 0xA3; // Set to CS ID
-// NRF
+// NRF radio module configuration 
 #define CHANNEL_START 0
 #define CHANNEL_STOP 127
 RF24 radio(11, 15);
@@ -43,13 +45,16 @@ void flashRed()
     delay(10);
     digitalWrite(L2, 0);
 }
+
+// Makes LED flash green
 void flashGreen()
 {
     digitalWrite(L1, 1);
     delay(10);
     digitalWrite(L1, 0);
 }
-// MPU 9250
+
+// MPU 9250 (IMU) configuration and data structures
 #define IMU_ADDRESS 0x68
 #define PERFORM_CALIBRATION
 MPU9250 IMU;
@@ -58,21 +63,28 @@ AccelData accelData;
 GyroData gyroData;
 MagData magData;
 Madgwick filter;
-// SHT 3x
+
+// SHT 3x (digital temperature and humidity sensor)
 Adafruit_SHT31 sht31 = Adafruit_SHT31();
+
 // GPS
 #define GPSSerial Serial1
 Adafruit_GPS GPS(&GPSSerial);
 #define GPSECHO false
+
+// State of each sensor
 struct sensorStates
 {
     bool sht3x, nrf24, mpu9250, sdmmc, gps = false;
     int err = 0;
 };
 sensorStates sState;
+
+// Data from each sensor
 struct sensorData
 {
     float ax, ay, az;
+    float accelMagnitude;
     float gx, gy, gz;
     float mx, my, mz;
     float t1, t2, rh;
@@ -81,6 +93,8 @@ struct sensorData
     int sats;
 };
 sensorData sData;
+
+// System info 
 struct sysInfo
 {
     int xvCH = 11;
@@ -91,6 +105,8 @@ struct sysInfo
     bool rbf, sd;
 };
 sysInfo sys;
+
+// Atmospheric data readings
 struct atmosphericData
 {
     float t1, t2, rh, p1, pa1;
@@ -100,7 +116,11 @@ struct atmosphericData
     float typ;
 };
 atmosphericData ad;
+
+String temp;
+
 // CubeSat Comms Protocol
+// Initializes all hardware and sensors
 #define SBUS_ADDR 0x00
 bool cad[CHANNEL_STOP - CHANNEL_START + 1];
 void setup()
@@ -159,6 +179,10 @@ void setup()
     GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
     GPS.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
     initMPU9250();
+    // Need to begin/initialize the Madgwick filter for it to filter and update values, initial beta setting of 0.1
+    // The beta determines how much the filter trusts accel./magnet. data vs. gyroscope, so initially there won't be 
+    // much trust between the sensors, but then beta will reupdate after initialization and calibration
+    filter.begin(0.1f); 
     initSHTx();
     delay(2000);
     digitalWrite(LED_BUILTIN, 1);
@@ -166,6 +190,7 @@ void setup()
     delay(1000);
     noTone(BUZZER);
 }
+
 double mpuTime, xvTime, orientationTxTime, asbPktTime;
 static unsigned long lastPrintTime = 0;
 String t2;
@@ -183,7 +208,9 @@ void loop()
         Serial.print(", ");
         Serial.print(sData.ay);
         Serial.print(", ");
-        Serial.println(sData.az);
+        Serial.print(sData.az);
+        Serial.print(", ");
+        Serial.println(sData.accelMagnitude);
         Serial.print("Gyro (deg/s): ");
         Serial.print(sData.gx);
         Serial.print(", ");
@@ -233,7 +260,6 @@ void loop()
         Serial.print("m, Sats: ");
         Serial.println(GPS.satellites);
         Serial.println("========================");
-        Serial.print(t2);
     }
     if (digitalRead(2) == 0)
     {
@@ -276,6 +302,7 @@ void loop()
     // Write data to file
     if (millis() - 1000 >= btLETime)
     {
+
         // txBLE();
         // usbDebug();
         readSHTx();
@@ -352,6 +379,8 @@ void loop()
         }
     }
 }
+
+// This function initializes and calibrates the MPU9250 (IMU)
 void initMPU9250()
 {
     int err = IMU.init(calib, IMU_ADDRESS);
@@ -389,6 +418,7 @@ void initMPU9250()
     delay(2000);
     IMU.calibrateAccelGyro(&calib);
     Serial2.println("Calibration done!");
+    // Print calibration results
     Serial2.println("Accel biases X/Y/Z: ");
     Serial2.print(calib.accelBias[0]);
     Serial2.print(", ");
@@ -417,16 +447,12 @@ void initMPU9250()
         Serial2.println(calib.magScale[2]);
     }
     noTone(BUZZER);
+    // Reinitialize IMU with updated calibration data
     IMU.init(calib, IMU_ADDRESS);
 #endif
-    // err = IMU.setGyroRange(500); //USE THESE TO SET THE RANGE, IF AN INVALID RANGE IS SET IT WILL RETURN -1
-    // err = IMU.setAccelRange(2); //THESE TWO SET THE GYRO RANGE TO ±500 DPS AND THE ACCELEROMETER RANGE TO ±2g
-    if (err != 0)
-    {
-        Serial2.print("Error Setting range: ");
-        Serial2.println(err);
-    }
 }
+
+// This function logs data from all the sensors to a CSV file on the SD card
 void logData()
 {
     if (!sdInit)
@@ -463,6 +489,15 @@ void logData()
         dlog.print(GPS.altitude);
         // Continue with other data
         dlog.print(",");
+        dlog.print(ad.t1); // Temperature (°C)
+        dlog.print(",");
+        dlog.print(ad.t2,2);
+        dlog.print(",");
+        dlog.print(sData.rh); // Humidity (%)
+        dlog.print(",");
+        dlog.print(ad.p1, 2); // Pressure (kPa with 2 decimals)
+        // IMU (Accelerometer, gyroscope, magnetometer) 
+        dlog.print(",");
         dlog.print(sData.t1); // Temperature (°C)
         dlog.print(",");
         dlog.print(ad.t2,2);
@@ -481,13 +516,16 @@ void logData()
         dlog.close();
     }
 }
+
+// This function reads the IMU data
 void readMPU9250()
 {
     IMU.update();
     IMU.getAccel(&accelData);
-    sData.ax = accelData.accelX * 10;
-    sData.ay = accelData.accelY * 10;
-    sData.az = accelData.accelZ * 10;
+    sData.ax = accelData.accelX;
+    sData.ay = accelData.accelY;
+    sData.az = accelData.accelZ;
+    sData.accelMagnitude = sqrt(sData.ax * sData.ax + sData.ay * sData.ay + sData.az * sData.az);
     IMU.getGyro(&gyroData);
     sData.gx = gyroData.gyroX;
     sData.gy = gyroData.gyroY;
@@ -498,9 +536,20 @@ void readMPU9250()
         sData.mx = magData.magX;
         sData.my = magData.magY;
         sData.mz = magData.magZ;
-        // filter.update(gyroData.gyroX, gyroData.gyroY, gyroData.gyroZ, accelData.accelX, accelData.accelY, accelData.accelZ, magData.magX, magData.magY, magData.magZ);
+        // The following lines with filter.update cannot be commented out or skipped if the magnetometer is not detected, 
+        // if they are then the filter will not update, the data won't update, and the values won't reflect true orientation
+        filter.update(gyroData.gyroX, gyroData.gyroY, gyroData.gyroZ, 
+        accelData.accelX, accelData.accelY, accelData.accelZ, 
+        magData.magX, magData.magY, magData.magZ);
+    } else {
+        // filter.update is not the same as filter.updateIMU, filter.updateIMU is specifically designed for when 
+        // "magnetometer measurement invalid (avoids NaN in magnetometer normalisation)"
+        filter.updateIMU(gyroData.gyroX, gyroData.gyroY, gyroData.gyroZ, 
+        accelData.accelX, accelData.accelY, accelData.accelZ);
     }
 }
+
+// This function initializes the temperature and humidity sensor
 void initSHTx()
 {
     if (!sht31.begin(0x44))
@@ -510,6 +559,8 @@ void initSHTx()
     }
     sState.sht3x = true;
 }
+
+// This function reads the temperature and humidity sensor
 void readSHTx()
 {
     float t = sht31.readTemperature();
@@ -533,6 +584,8 @@ void readSHTx()
         Serial2.println("Failed to read humidity");
     }
 }
+
+// This function scans I2C bus and updates i2cStats with detected addresses 
 bool i2cStats[128];
 void scani2c()
 {
@@ -546,6 +599,8 @@ void scani2c()
             i2cStats[a] = false;
     }
 }
+
+// This function plays a startup tone sequence via the buzzer
 void startupTone()
 {
     tone(BUZZER, 650, 250);
@@ -573,6 +628,8 @@ void startupTone()
     noTone(BUZZER);
     digitalWrite(BUZZER, 0);
 }
+
+// This function sends system and sensor data to the BLE module over Serial2
 void txBLE()
 {
     if (!sendPKTtoBLE)
@@ -603,6 +660,8 @@ void txBLE()
     Serial2.print(sData.ay, 2);
     Serial2.print(",");
     Serial2.print(sData.az, 2);
+    Serial2.print(",");
+    Serial2.print(sData.accelMagnitude, 2);
     Serial2.print(",");
     Serial2.print(sData.gx, 2);
     Serial2.print(",");
@@ -635,6 +694,8 @@ void txBLE()
     Serial2.print(sys.bms_err);
     Serial2.println("");
 }
+
+// Function for USB debugging to allow communication of devices over a USB connection
 void usbDebug()
 {
     // return;
@@ -664,6 +725,8 @@ void usbDebug()
     Serial.print(sData.ay, 2);
     Serial.print(",");
     Serial.print(sData.az, 2);
+    Serial.print(",");
+    Serial.print(sData.accelMagnitude, 2);
     Serial.print(",");
     Serial.print(sData.gx, 2);
     Serial.print(",");
@@ -696,9 +759,13 @@ void usbDebug()
     Serial.print(sys.bms_err);
     Serial.println("");
 }
+
+
 void nrf24Scan()
 {
 }
+
+// This function prints the file directory for the SD card
 void printDirectory(File dir, int numTabs)
 {
     File entry = dir.openNextFile();
@@ -731,6 +798,8 @@ void printDirectory(File dir, int numTabs)
     }
     entry.close();
 }
+
+// This function transmits the GPS, TPU, and BMS data to the ASB over radio
 char packet[PACKET_SIZE];
 void tx_packet()
 {
@@ -764,12 +833,14 @@ void tx_packet()
     report = radio.write(&packet, PACKET_SIZE);
     (report) ? flashGreen() : flashRed();
 }
+
+// This function transmits the IMU orientation data to the ASB over radio
 void txOrientationPkt()
 {
     uint8_t report = 0;
     // ACCEL Main Packet
-    sprintf(packet, "#D,%02X,%03.2f,%03.2f,%03.2f,",
-            csID, sData.ax, sData.ay, sData.az);
+    sprintf(packet, "#D,%02X,%03.2f,%03.2f,%03.2f, %03.2f",
+            csID, sData.ax, sData.ay, sData.az, sData.accelMagnitude);
     report = radio.write(&packet, PACKET_SIZE);
     (report) ? flashGreen() : flashRed();
     // GRYO Main Packet
@@ -782,11 +853,14 @@ void txOrientationPkt()
             csID, sData.mx, sData.my, sData.mz);
     report = radio.write(&packet, PACKET_SIZE);
     (report) ? flashGreen() : flashRed();
+    // Make sure the filter initializes, begins, and is updating or the following values are meaningless
     sprintf(packet, "#I,%02X,%03.2f,%03.2f,%03.2f,%03.2f,",
             csID, filter.getQuatW(), filter.getQuatX(), filter.getQuatY(), filter.getQuatZ());
     report = radio.write(&packet, PACKET_SIZE);
     (report) ? flashGreen() : flashRed();
 }
+
+// This function transmits the atmospheric data to the ASB over radio
 void txASBPacket()
 {
     sprintf(packet, "#J,%02X,%02.1f,%02.1f,%03.1f,%04.1f,",
