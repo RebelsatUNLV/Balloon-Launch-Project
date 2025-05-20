@@ -7,35 +7,18 @@
 #include <Wire.h>
 #include "Adafruit_SHT31.h"
 #include "SparkFun_ENS160.h"
-#include <Adafruit_BMP085.h>
-#include <sps30.h>
-#include <DFRobot_SCD4X.h>
-//barometer libary dependencies
+// #include <Adafruit_BMP085.h> // OLD LIB
+// #include <sps30.h> // REMOVED SPS30
+// #include <DFRobot_SCD4X.h> // REMOVED SCD4X
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP085_U.h>
-
-#define ALTITUDE 1011.9	
-
-//barometer macros begin
-// ======== CALIBRATION SETTINGS (MODIFY THESE) ========
-// Enter your known altitude in meters
-#define KNOWN_ALTITUDE 743.0  // Replace with your actual altitude
-
-// Enter your local sea level pressure in hPa (check a weather service)
-// Standard is 1013.25 hPa, but using local value improves accuracy
-#define LOCAL_SEA_LEVEL_PRESSURE 1011.6  // Replace with local value
-
-// Pressure offset in hPa (adjust based on comparison with reference)
-#define PRESSURE_OFFSET 0.0  // Fine-tune as needed after testing
-// =====================================================
-//baromete macros end
 
 
 Adafruit_SHT31 sht31 = Adafruit_SHT31();
 SparkFun_ENS160 ens; 
-Adafruit_BMP085 bmp;
-struct sps30_measurement m;
-DFRobot_SCD4X SCD4X(&Wire, SCD4X_I2C_ADDR);
+Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
+// struct sps30_measurement m; // REMOVED SPS30
+// DFRobot_SCD4X SCD4X(&Wire, SCD4X_I2C_ADDR); // REMOVED SCD4X
 
 
 // ASB Variables
@@ -44,15 +27,16 @@ bool ist[128];
 
 
 struct baseSens {
-  bool sht3x, bmp180, ens160, sps30, scd40;
+  bool sht3x, bmp180, ens160; // REMOVED sps30, scd40
 };
 baseSens bs;
 
 struct baseData {
-  float t1, temperature, pressureKPa, rh, altitude;
+  float t1, t2, p1, rh, pa1;
   uint32_t aqi, tvoc, eco2;
-  uint16_t co2;
+  // uint16_t co2; // REMOVED CO2 (from SCD4X)
   int ensFlags;
+  
 };
 baseData bd;
 
@@ -70,7 +54,7 @@ void setup() {
   for(int i=0; i<128; i++){
     if(ist[i]){
       Serial.print("DTC 0x");
-     // if(i < 16) Serial.print("0");
+      if(i < 16) Serial.print("0");
       Serial.println(i, HEX);
     }
   }
@@ -79,22 +63,23 @@ void setup() {
   if(ist[0x53]) bs.ens160 = true;
   
 
-  sensirion_i2c_init();
+  // sensirion_i2c_init(); // REMOVED (was for SPS30)
 
-  if(sps30_probe() != 0) {
-    Serial.print("SPS sensor probing failed\n");
-    delay(500);
-    bs.sps30 = false;
-  }
-  uint16_t ret = sps30_set_fan_auto_cleaning_interval_days(4);
-  if (ret) {
-    Serial.print("error setting the auto-clean interval: ");
-    Serial.println(ret);
-  }
-  ret = sps30_start_measurement();
-  if (ret < 0) {
-    Serial.print("error starting measurement\n");
-  }
+  // REMOVED SPS30 Initialization Block
+  // if(sps30_probe() != 0) {
+  //   Serial.print("SPS sensor probing failed\n");
+  //   delay(500);
+  //   bs.sps30 = false;
+  // }
+  // uint16_t ret = sps30_set_fan_auto_cleaning_interval_days(4);
+  // if (ret) {
+  //   Serial.print("error setting the auto-clean interval: ");
+  //   Serial.println(ret);
+  // }
+  // ret = sps30_start_measurement();
+  // if (ret < 0) {
+  //   Serial.print("error starting measurement\n");
+  // }
 
   if (bmp.begin()) {
     flashLED();
@@ -105,25 +90,22 @@ void setup() {
   if(sht31.begin()){
     flashLED();
   }
-  if(SCD4X.begin() ){
-    flashLED();
-  }
-  delay(2000);
-  SCD4X.enablePeriodMeasure(SCD4X_STOP_PERIODIC_MEASURE);
-  SCD4X.setTempComp(4.0);
-//  float temp = 0;
-//  temp = SCD4X.getTempComp();
-//  Serial.print("The current temperature compensation value : ");
-//  Serial.print(temp);
-//  Serial.println(" C");
-  SCD4X.setSensorAltitude(bmp.readAltitude(ALTITUDE*100));
-  SCD4X.enablePeriodMeasure(SCD4X_START_PERIODIC_MEASURE);
+  // REMOVED SCD4X Initialization and Configuration Block
+  // if(SCD4X.begin() ){
+  //   flashLED();
+  // }
+  // delay(2000); // This delay was part of the SCD4X init sequence
+  // SCD4X.enablePeriodMeasure(SCD4X_STOP_PERIODIC_MEASURE);
+  // SCD4X.setTempComp(4.0);
+  // //  float temp = 0;
+  // //  temp = SCD4X.getTempComp();
+  // //  Serial.print("The current temperature compensation value : ");
+  // //  Serial.print(temp);
+  // //  Serial.println(" C");
+  // // SCD4X.setSensorAltitude(bmp.readAltitude());
+  // SCD4X.enablePeriodMeasure(SCD4X_START_PERIODIC_MEASURE);
   
-
-
-  
-  
-  if( ens.setOperatingMode(SFE_ENS160_RESET)){
+  if( ens.setOperatingMode(SFE_ENS160_RESET)){ // This block remains
     Serial.println("Ready.");
     delay(100);
     ens.setOperatingMode(SFE_ENS160_STANDARD);
@@ -133,25 +115,6 @@ void setup() {
   //  Serial.print("Gas Sensor Status Flag (0 - Standard, 1 - Warm up, 2 - Initial Start Up): ");
     Serial.println(ensStatus);
   }
-  //barometer
-   while (!Serial) delay(10); // Wait for serial port to open
-  
-  Serial.println("Pressure Sensor with Compile-Time Calibration");
-  Serial.println("");
-  //bread board testing
-  // Initialize I2C
-  //Wire.setSDA(0);  // GPIO 0 for SDA
-  //Wire.setSCL(1);  // GPIO 1 for SCL
-  //Wire.begin();
-  
-  /* Initialize the sensor */
-  if(!bmp.begin())
-  {
-    /* There was a problem detecting the BMP085 ... check your connections */
-   // Serial.print("Ooops, no BMP085/180 detected ... Check your wiring or I2C ADDR!");
-    while(1);
-  }
-  //end barometer
 }
 
 uint32_t lowPollRate, highPollRate, txPacketTime = 0;
@@ -160,8 +123,8 @@ void loop() {
   if(lowPollRate + 1000 <= millis()){
     getSHT3x();
     getENS160();
-    pollsps();
-    getSCD4x();
+    // pollsps(); // REMOVED
+    // getSCD4x(); // REMOVED
     lowPollRate = millis();
   }
 
@@ -173,10 +136,8 @@ void loop() {
 
   if(txPacketTime + 1000 <= millis()){
     txMainPkt();
-    txPM2Pkt();
     txPacketTime = millis();
   }
-
 }
 
 
@@ -210,17 +171,17 @@ void scani2c(){
 }
 
 
-
+// This txMainPkt function is from your provided code for this modification request.
+// It only sends T1, T2, RH, P1.
 void txMainPkt(){
   UCSR0B |= _BV(TXEN0);
   digitalWrite(LED, 1);
 
   char bu[150];
-  //                  | T1 | T2 | RH | P1 | PA |AQI |TVOC|ECO2|CO2
-  sprintf(bu, "$ASB,0,%05d,%05d,%04d,%05d,%05d,%01d,%06d,%05d,%05d,*",
-          (int)((bd.t1+40)*100), (int)((bd.temperature)), (int)(bd.rh*10),
-          (int)(bd.pressureKPa), (int)(bd.altitude),
-          (int)bd.aqi, (int)bd.tvoc, (int)bd.eco2, (int)bd.co2);
+  //                  | T1 | T2 | RH | P1 |
+  sprintf(bu, "$ASB,0,%05d,%05d,%04d,%05d*",
+          (int)((bd.t1+40)*100), (int)((bd.t2+40)*100), (int)(bd.rh*10),
+          (int)(bd.p1/10));
   Serial.println(bu);
   delay(100);
   UCSR0B &= ~bit (TXEN0);
@@ -229,28 +190,6 @@ void txMainPkt(){
   // pinMode(1, INPUT);
   digitalWrite(LED, 0);
 }
-
-void txPM2Pkt(){
-  digitalWrite(LED, 1);
-  UCSR0B |= _BV(TXEN0);
-  char bu[150];
-  //                  |PM 1.0 - 10.0     |NC 0.5 - 10.0           |TYP Part Size
-  sprintf(bu, "$ASB,1,%05d,%05d,%05d,%05d,%06d,%06d,%06d,%06d,%06d,%03d,*",
-          (int)(m.mc_1p0 * 10),(int)(m.mc_2p5 * 10),(int)(m.mc_4p0 * 10),(int)(m.mc_10p0 * 10),
-          (int)((m.nc_0p5)*10), (int)((m.nc_1p0  - m.nc_0p5)*10), (int)((m.nc_2p5  - m.nc_1p0)*10), 
-          (int)((m.nc_4p0  - m.nc_2p5)*10), (int)((m.nc_10p0 - m.nc_4p0)*10),
-          (int)(m.typical_particle_size * 100)
-          );
-  Serial.println(bu);
-  delay(100);
-  // UCSR0B &= _BV(TXEN0);
-  UCSR0B &= ~bit (TXEN0);
-  // digitalWrite(1, 0);
-  // pinMode(1, INPUT);
-  digitalWrite(LED, 0);
-}
-
-
 
 
 // Main Sens Functions
@@ -262,64 +201,18 @@ void getSHT3x(){
 }
 
 void getBMP180(){
-
-
-    //barometer begin
-    /* Get a new sensor event */ 
   sensors_event_t event;
-  //bmp.getEvent(&event);
- 
-  /* Display the results with calibration applied */
-  if (event.pressure)
+  bmp.getEvent(&event);
+
+  if(event.pressure)
   {
-    // Apply calibration offset to pressure
-    float calibratedPressure = event.pressure + PRESSURE_OFFSET;
-    
-    // Convert to kPa for display
-    float pressureKPa = calibratedPressure / 10.0;
-    
-    // Display raw and calibrated pressure
-   // Serial.print("Raw Pressure:      ");
-  //  Serial.print(event.pressure / 10.0);
-   // Serial.println(" kPa");
-    
-   // Serial.print("Calibrated Pressure: ");
-   // Serial.print(pressureKPa);
-  //  Serial.println(" kPa");
-    
-    /* Get the current temperature */
     float temperature;
-    //bmp.getTemperature(&temperature);
-   // Serial.print("Temperature:        ");
-   // Serial.print(temperature);
-   // Serial.println(" C");
+    bmp.getTemperature(&temperature);
+    bd.t2 = temperature;
 
-    /* Calculate altitude using the calibrated pressure and local sea level reference */
-    float altitude = 44330.0 * (1.0 - pow(calibratedPressure / LOCAL_SEA_LEVEL_PRESSURE, 0.190294957184));
-    
-   // Serial.print("Altitude:           "); 
-   // Serial.print(altitude); 
-   // Serial.println(" m");
-    
-    // Calculate sea level pressure using the known altitude
-    // This is useful for verifying your calibration
-    float calculatedSeaLevel = calibratedPressure / pow(1.0 - (KNOWN_ALTITUDE / 44330.0), 5.255);
-    Serial.print("Calculated Sea Level: ");
-    Serial.print(calculatedSeaLevel/10);
-   Serial.println(" kPa");
-    
-   // Serial.println("");
-  bd.temperature = temperature;
-  bd.pressureKPa = calculatedSeaLevel;
-  bd.altitude = altitude;
-
+    bd.p1 = event.pressure;
+    // Note: bd.pa1 is in struct baseData but not calculated/updated here in this version of getBMP180
   }
-  else
-  {
-    Serial.println("Sensor error");
-  }
-  delay(1000);
-  //barometer end
 }
 
 void getENS160(){
@@ -348,74 +241,15 @@ void getENS160(){
 }
 
 
+// REMOVED pollsps() function
+// void pollsps(){
+// //  if(!bs.sps30) return;
+//   ...
+// }
 
-
-
-void pollsps(){
-//  if(!bs.sps30) return;
-  
-  
-  uint16_t data_ready;
-  int16_t ret;
-
-  ret = sps30_read_data_ready(&data_ready);
-  if (ret < 0) {
-    Serial.print("#error reading data-ready flag: ");
-    Serial.println(ret);
-    return;
-  } else if (!data_ready){
-    Serial.print("#data not ready, no new measurement available\n");
-    return;
-  }
-  ret = sps30_read_measurement(&m);
-  if (ret < 0) {
-    Serial.print("#error reading measurement\n");
-    return;
-  } else {
-
-//    Serial.print("PM  1.0: ");
-//    Serial.println(m.mc_1p0);
-//    Serial.print("PM  2.5: ");
-//    Serial.println(m.mc_2p5);
-//    Serial.print("PM  4.0: ");
-//    Serial.println(m.mc_4p0);
-//    Serial.print("PM 10.0: ");
-//    Serial.println(m.mc_10p0);
-//
-//    Serial.print("Typical partical size: ");
-//    Serial.println(m.typical_particle_size);
-//
-//    Serial.print(m.nc_0p5);
-//    Serial.print(" ");
-//    Serial.print(m.nc_1p0  - m.nc_0p5);
-//    Serial.print(" ");
-//    Serial.print(m.nc_2p5  - m.nc_1p0);
-//    Serial.print(" ");
-//    Serial.print(m.nc_4p0  - m.nc_2p5);
-//    Serial.print(" ");
-//    Serial.print(m.nc_10p0 - m.nc_4p0);
-//    Serial.println();
-  }
-}
-
-void getSCD4x(){
-  if(SCD4X.getDataReadyStatus()) {
-    DFRobot_SCD4X::sSensorMeasurement_t data;
-    SCD4X.readMeasurement(&data);
-//
-//    Serial.print("Carbon dioxide concentration : ");
-//    Serial.print(data.CO2ppm);
-//    Serial.println(" ppm");
-    bd.co2 = data.CO2ppm;
-//
-//    Serial.print("Environment temperature : ");
-//    Serial.print(data.temp);
-//    Serial.println(" C");
-//
-//    Serial.print("Relative humidity : ");
-//    Serial.print(data.humidity);
-//    Serial.println(" RH");
-
-//    Serial.println();
-  }
-}
+// REMOVED getSCD4x() function
+// void getSCD4x(){
+//   if(SCD4X.getDataReadyStatus()) {
+//     ...
+//   }
+// }
