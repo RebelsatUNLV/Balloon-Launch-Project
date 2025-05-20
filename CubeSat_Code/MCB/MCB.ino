@@ -38,7 +38,7 @@ RF24 radio(11, 15);
 #define L2 7
 #define L3 8
 
-// Makes LED flash red
+#define LOCAL_SEA_LEVEL_PRESSURE 1011.6
 void flashRed()
 {
     digitalWrite(L2, 1);
@@ -193,6 +193,7 @@ void setup()
 
 double mpuTime, xvTime, orientationTxTime, asbPktTime;
 static unsigned long lastPrintTime = 0;
+String t2;
 void loop()
 {
     // Print all sensor data every second
@@ -236,28 +237,9 @@ void loop()
         Serial.println("°C");
         Serial.print("Pressure: ");
         Serial.print(ad.p1);
-        Serial.print("kPa, Alt: ");
+        Serial.print("hPa, Alt: ");
         Serial.print(ad.pa1);
         Serial.println("m");
-        Serial.print("Air Quality: AQI ");
-        Serial.print(ad.aqi);
-        Serial.print(", TVOC: ");
-        Serial.print(ad.tvoc);
-        Serial.print("ppb, CO₂: ");
-        Serial.print(ad.eco2);
-        Serial.print("ppm (eCO₂), ");
-        Serial.print(ad.co2);
-        Serial.println("ppm (raw)");
-        // Particulate Matter
-        Serial.print("PM Levels (μg/m³): ");
-        Serial.print("1.0=");
-        Serial.print(ad.pm10);
-        Serial.print(", 2.5=");
-        Serial.print(ad.pm25);
-        Serial.print(", 4.0=");
-        Serial.print(ad.pm40);
-        Serial.print(", 10=");
-        Serial.println(ad.pm100);
         // Battery System
         Serial.print("Battery: ");
         Serial.print(sys.batV);
@@ -278,10 +260,6 @@ void loop()
         Serial.print("m, Sats: ");
         Serial.println(GPS.satellites);
         Serial.println("========================");
-
-        // Packet from ASB
-        Serial.println("Packet from ASB: ");
-        Serial.println(temp);
     }
     if (digitalRead(2) == 0)
     {
@@ -324,10 +302,19 @@ void loop()
     // Write data to file
     if (millis() - 1000 >= btLETime)
     {
-        txBLE();
-        usbDebug();
-        readSHTx(); // scan i2c
-        logData(); // log data
+
+        // txBLE();
+        // usbDebug();
+        readSHTx();
+        logData(); // ADD THIS LINE
+        btLETime = millis();
+    }
+    if (millis() - 1000 >= btLETime)
+    {
+        // txBLE();
+        // usbDebug();
+        // scani2c();
+        readSHTx();
         btLETime = millis();
     }
     char c = GPS.read();
@@ -369,6 +356,7 @@ void loop()
         if (rs.startsWith("$ASB,0"))
         {
             // Temperature 1
+            t2 = rs;
             t = rs.substring(7, 12);
             int i = t.toInt();
             ad.t1 = ((float)i / 100) - 40;
@@ -376,66 +364,18 @@ void loop()
             t = rs.substring(13, 18);
             i = t.toInt();
             ad.t2 = ((float)i / 100) - 40;
+            // sData.t2 = ad.t2; // <<<<<<<<<<<< FIX: Assign ad.t2 to sData.t2
             // Humidity
-            t = rs.substring(20, 25); // AD RH (corrected position)
+            t = rs.substring(20, 24); // AD RH (corrected position)
             i = t.toInt();
             ad.rh = ((float)i / 10);
             // Pressure (FIXED)
-            t = rs.substring(19, 24); // Correct substring for pressure
+            t = rs.substring(25, 30); // Correct substring for pressure
             i = t.toInt();
-            ad.p1 = (float)i / 10; // Proper kPa conversion
+            ad.p1 = (float)i * 10; // Proper kPa conversion
             // Pressure Altitude (FIXED)
-            t = rs.substring(26, 31); // Now unique substring
-            ad.pa1 = t.toInt();
-            t = rs.substring(32, 33); // AD AQI
-            ad.aqi = t.toInt();
-            t = rs.substring(34, 40); // AD tvoc PPB
-            ad.tvoc = t.toInt();
-            t = rs.substring(41, 46); // AD ECO2 PPM
-            ad.eco2 = t.toInt();
-            t = rs.substring(47, 52); // AD CO2 PPM
-            ad.co2 = t.toInt();
-        }
-        if (rs.startsWith("$ASB,1"))
-        {
-            t = rs.substring(7, 12); // AD MC 1.0
-            int i = t.toInt();
-            ad.pm10 = ((float)i / 10);
-            t = rs.substring(13, 18); // AD MC 2.5
-            i = t.toInt();
-            ad.pm25 = ((float)i / 10);
-            t = rs.substring(19, 24); // AD MC 4.0
-            i = t.toInt();
-            ad.pm40 = ((float)i / 10);
-            t = rs.substring(25, 30); // AD MC 10.0
-            i = t.toInt();
-            ad.pm100 = ((float)i / 10);
-            t = rs.substring(31, 37); // AD NC 0.5
-            i = t.toInt();
-            ad.nc05 = ((float)i / 10);
-            t = rs.substring(38, 44); // AD NC 1.0
-            i = t.toInt();
-            ad.nc10 = ((float)i / 10);
-            t = rs.substring(45, 51); // AD NC 2.5
-            i = t.toInt();
-            ad.nc25 = ((float)i / 10);
-            t = rs.substring(52, 58); // AD NC 4.0
-            i = t.toInt();
-            ad.nc40 = ((float)i / 10);
-            t = rs.substring(59, 65); // AD NC 10.0
-            i = t.toInt();
-            ad.nc100 = ((float)i / 10);
-            t = rs.substring(66, 69); // AD Typ Part Size
-            i = t.toInt();
-            ad.typ = ((float)i / 100);
-        }
-        if (rs.startsWith("$CTR"))
-        {
-            // String es = rs.substring(5, 10);
-        }
-        if (rs.startsWith("$VAR"))
-        {
-            // String es = rs.substring(5, 10);
+            // t = rs.substring(26, 31); // Now unique substring
+            ad.pa1 = 44330.0 * (1.0 - pow(ad.p1 / LOCAL_SEA_LEVEL_PRESSURE, 0.190294957184));
         }
     }
 }
@@ -523,7 +463,7 @@ void logData()
         // Write header if file is empty
         if (dlog.size() == 0)
         {
-            dlog.println("Timestamp,Lat,Lon,Alt,Temp (C),RH (%),Pressure (kPa),AccelX (m/s²),AccelY (m/s²),AccelZ (m/s²), AccelMagnitude (m/s²), GyroX (deg/s),GyroY (deg/s),GyroZ (deg/s),MagX (μT),MagY (μT),MagZ (μT)");
+            dlog.println("Timestamp,Lat,Lon,Alt (GPS),Temp1 (C),Temp2 (C),RH (%),Pressure (hPa),AccelX (m/s²),AccelY (m/s²),AccelZ (m/s²), Alt (Bar)");
         }
         // Calculate timestamp
         unsigned long totalSeconds = millis() / 1000;
@@ -532,10 +472,13 @@ void logData()
         int minutes = totalMinutes % 60;
         int hours = totalMinutes / 60;
         // Write timestamp
+        if(hours < 10) dlog.print("0");
         dlog.print(hours);
         dlog.print(":");
+        if(minutes < 10) dlog.print("0");
         dlog.print(minutes);
         dlog.print(":");
+        if(seconds < 10) dlog.print("0");
         dlog.print(seconds);
         dlog.print(",");
         // Check GPS fix before logging
@@ -543,36 +486,33 @@ void logData()
         dlog.print(",");
         dlog.print(GPS.longitudeDegrees, 6);
         dlog.print(",");
-        dlog.print(ad.pa1);
+        dlog.print(GPS.altitude);
         // Continue with other data
         dlog.print(",");
         dlog.print(ad.t1); // Temperature (°C)
         dlog.print(",");
-        dlog.print(ad.rh); // Humidity (%)
+        dlog.print(ad.t2,2);
+        dlog.print(",");
+        dlog.print(sData.rh); // Humidity (%)
         dlog.print(",");
         dlog.print(ad.p1, 2); // Pressure (kPa with 2 decimals)
         // IMU (Accelerometer, gyroscope, magnetometer) 
         dlog.print(",");
-        dlog.print(sData.ax); // Acceleration logged in m/s^2 (converted from G's)
+        dlog.print(sData.t1); // Temperature (°C)
         dlog.print(",");
-        dlog.print(sData.ay);
+        dlog.print(ad.t2,2);
         dlog.print(",");
-        dlog.print(sData.az);
+        dlog.print(sData.rh); // Humidity (%)
         dlog.print(",");
-        dlog.print(sData.accelMagnitude);
+        dlog.print(ad.p1, 2); // Pressure (kPa with 2 decimals)
         dlog.print(",");
-        dlog.print(sData.gx); 
+        dlog.print(accelData.accelX);
         dlog.print(",");
-        dlog.print(sData.gy);
+        dlog.print(accelData.accelY);
         dlog.print(",");
-        dlog.print(sData.gz);
+        dlog.print(accelData.accelZ);
         dlog.print(",");
-        dlog.print(sData.mx);
-        dlog.print(",");
-        dlog.print(sData.my);
-        dlog.print(",");
-        dlog.print(sData.mz);
-        dlog.println();
+        dlog.println(ad.pa1);
         dlog.close();
     }
 }
